@@ -164,10 +164,22 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
         server_addr.sin_port = htons(atoi(ports[i+1]));
         server_addr.sin_addr.s_addr = inet_addr(ips[i+1]);
         
-        if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-            printf("Unable to connect\n");
-            return;
+        bool connected = false;
+        int retries = 0;
+        while (connected == false){
+            if (retries == 10){
+                return;
+            }
+            if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+                printf("Unable to connect. Trying again...\n");
+                sleep(10);
+                continue;
+                retries++;
+            } else {
+                connected = true;
+            }
         }
+
         printf("Connected with server successfully\n");
 
         size_t submatSize;
