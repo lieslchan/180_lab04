@@ -62,7 +62,7 @@ void read_config(char ips[][16], char ports[][6], size_t* userT){
     // open config file to get ip address
     fptr = fopen("config.txt", "r");
     if (fptr != NULL){
-        fscanf(fptr, "%d", userT);
+        fscanf(fptr, "%ld", userT);
 
         for (int i=0; i < *userT; i++){
             fscanf(fptr, "%s %s", ips[i], ports[i]);
