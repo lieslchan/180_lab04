@@ -225,7 +225,7 @@ int main(){
     printf("\n");
 
     // get instance status
-    printf("Enter status");
+    printf("Enter status: \n");
     scanf("%d", &status);
     if (status != 0 && status != 1){
         return 0;
