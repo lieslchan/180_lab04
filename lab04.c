@@ -12,7 +12,7 @@
 #include <string.h>
 
 void find_ip(char ips[][16], char ports[][6], char* port, size_t userT, char* ip, size_t* i){
-    for (*i=1; *i<userT; *i++){
+    for (*i=0; *i<userT; *i++){
         if (strcmp(port, ports[*i])==0){
             strcpy(ip, ips[*i]);
             break;
@@ -57,15 +57,21 @@ float** split_matrix(size_t userN, size_t userT, float* mat) {
     return submatrices;
 }
 
-void read_config(char ips[][16], char ports[][6], size_t* userT){
+void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPort, char* masterIP){
     FILE *fptr;
     // open config file to get ip address
     fptr = fopen("config.txt", "r");
+    
     if (fptr != NULL){
+        fscanf(fptr, "%s %s", masterIP, masterPort);
+        
         fscanf(fptr, "%ld", userT);
+        printf("t = %ld\n", *userT);
 
         for (int i=0; i < *userT; i++){
             fscanf(fptr, "%s %s", ips[i], ports[i]);
+            printf("IP %d: %s\n", i, ips[i]);
+            printf("PORT %d: %s\n", i, ports[i]);
         }
 
         fclose(fptr);
@@ -86,11 +92,17 @@ void slave(char* ip, char* port, size_t submatSize){
         return;
     }
     printf("Socket created successfully\n");
+    // Source - https://stackoverflow.com/a/24194999
+	if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
+		printf("setsockopt(SO_REUSEADDR) failed");
+		return;
+	}
+	    
     
     // Initialize the server address by the port and IP:
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(port));
-    server_addr.sin_addr.s_addr = inet_addr(ip);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
     
     // Bind the socket descriptor to the server address (the port and IP):
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr))<0){
@@ -161,8 +173,8 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
         
         // Set port and IP the same as server-side:
         server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(atoi(ports[i+1]));
-        server_addr.sin_addr.s_addr = inet_addr(ips[i+1]);
+        server_addr.sin_port = htons(atoi(ports[i]));
+        server_addr.sin_addr.s_addr = inet_addr(ips[i]);
         
         bool connected = false;
         int retries = 0;
@@ -171,10 +183,10 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
                 return;
             }
             if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-                printf("Unable to connect. Trying again...\n");
-                sleep(10);
-                continue;
+                perror("connect");
+                sleep(1);
                 retries++;
+                continue;
             } else {
                 connected = true;
             }
@@ -247,8 +259,10 @@ int main(){
     char ips[17][16];
     char ports[17][6];
     size_t userT;
+    char masterIP[16];
+    char masterPort[6];
 
-    read_config(ips, ports, &userT);
+    read_config(ips, ports, &userT, masterPort, masterIP);
 
     if (status == 0){
         float *mat = generate_matrix(userN);
@@ -276,7 +290,12 @@ int main(){
         size_t i;
         find_ip(ips, ports, userPort, userT, ip, &i);
         size_t submatSize;
-        submatSize = i==1 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
+        submatSize = i==0 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
+        
+        printf("submat size: %ld\n", submatSize);
+        printf("userN: %ld\n", userN);
+        printf("userT: %ld\n", userT);
+        printf("i: %ld\n", i);
         
         clock_gettime(CLOCK_MONOTONIC, &time_before);
         slave(ip, userPort, submatSize);
