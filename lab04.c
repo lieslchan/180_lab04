@@ -11,6 +11,15 @@
 #include <arpa/inet.h>
 #include <string.h>
 
+typedef struct socketInfo {
+    size_t n;
+    size_t t; 
+    char* port;
+    char* ip;
+    float* submat;
+    size_t id;
+} socketInfo;
+
 void find_ip(char ips[][16], char ports[][6], char* port, size_t userT, char* ip, size_t* i){
     for (*i=0; *i<userT; *i++){
         if (strcmp(port, ports[*i])==0){
@@ -156,76 +165,102 @@ void slave(char* ip, char* port, size_t submatSize){
     close(socket_desc);
 }
 
-void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, size_t userN){
+void* send_to_slave(void* arg){
+    socketInfo* sock = (socketInfo*) arg;
+    
     int socket_desc;
     struct sockaddr_in server_addr;
     char ack[4];
+
+    // Create socket:
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     
-    for (int i=0; i<userT; i++){
-        // Create socket:
-        socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-        
-        if(socket_desc < 0){
-            printf("Unable to create socket\n");
-            return;
-        }
-        printf("Socket created successfully\n");
-        
-        // Set port and IP the same as server-side:
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(atoi(ports[i]));
-        server_addr.sin_addr.s_addr = inet_addr(ips[i]);
-        
-        bool connected = false;
-        int retries = 0;
-        while (connected == false){
-            if (retries == 10){
-                return;
-            }
-            if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-                perror("connect");
-                sleep(1);
-                retries++;
-                continue;
-            } else {
-                connected = true;
-            }
-        }
-
-        printf("Connected with server successfully\n");
-
-        size_t submatSize;
-        submatSize = i==0 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
-    
-        // Send the message to server:
-        if(send(socket_desc, submatrices[i], submatSize * sizeof(float), 0) < 0){
-            printf("Unable to send message\n");
-            return;
-        } else {
-            printf("Sent Matrix: \n");
-                for (int j=0; j<submatSize; j++){
-                    printf("%f", submatrices[i][j]);
-                    if (i == 3) {
-                        printf("\n");
-                    } else {
-                        printf(" ");
-                    }
-                }
-        }
-
-        // Receive the server's response:
-        if(recv(socket_desc, ack, 4*sizeof(char), 0) < 0){
-            printf("Error while receiving server's msg\n");
-            return;
-        }
-
-        if (strcmp(ack, "ack") == 0){
-            printf("Slave %d acknowledged\n", i);
-        }
-
-        // Close the socket:
-        close(socket_desc);
+    if(socket_desc < 0){
+        printf("Unable to create socket\n");
+        return NULL;
     }
+    printf("Socket created successfully\n");
+    
+    // Set port and IP the same as server-side:
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(atoi(sock->port));
+    server_addr.sin_addr.s_addr = inet_addr(sock->ip);
+    
+    bool connected = false;
+    int retries = 0;
+    while (connected == false){
+        if (retries == 10){
+            return NULL;
+        }
+        if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+            perror("connect");
+            sleep(1);
+            retries++;
+            continue;
+        } else {
+            connected = true;
+        }
+    }
+
+    printf("Connected with server successfully\n");
+
+    size_t submatSize;
+    submatSize = sock->id==0 ? sock->n * (sock->n/sock->t)+(sock->n % sock->t) : sock->n * (sock->n/sock->t);
+
+    // Send the message to server:
+    if(send(socket_desc, sock->submat, submatSize * sizeof(float), 0) < 0){
+        printf("Unable to send message\n");
+        return NULL;
+    } else {
+        printf("Sent Matrix: \n");
+            for (int j=0; j<submatSize; j++){
+                printf("%f", sock->submat[j]);
+                if (j%sock->n == 0) {
+                    printf("\n");
+                } else {
+                    printf(" ");
+                }
+            }
+    }
+
+    // Receive the server's response:
+    if(recv(socket_desc, ack, 4*sizeof(char), 0) < 0){
+        printf("Error while receiving server's msg\n");
+        return NULL;
+    }
+
+    if (strcmp(ack, "ack") == 0){
+        printf("Slave %d acknowledged\n", sock->id);
+    }
+
+    // Close the socket:
+    close(socket_desc);
+    return NULL;
+}
+
+void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, size_t userN){
+    socketInfo* splits = (socketInfo*)malloc(sizeof (socketInfo) * userT);
+    pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t) * userT);
+    
+    for (size_t i=0; i<userT; i++){
+        splits[i].n = userN;
+        splits[i].t = userT;
+        splits[i].submat = submatrices[i];
+        splits[i].ip = ips[i];
+        splits[i].port = ports[i];
+        splits[i].id = i;
+    }
+
+    for (size_t i = 0; i < userT; i++) {
+        pthread_create(&tid[i], NULL, send_to_slave, &splits[i]);
+    }
+
+    for (size_t i = 0; i < userT; i++) {
+        pthread_join(tid[i], NULL);
+    }
+    
+    free(splits);
+    free(tid);
 }
 
 // main function
