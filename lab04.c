@@ -16,8 +16,11 @@ typedef struct socketInfo {
     size_t t; 
     char* port;
     char* ip;
+    char* masterPort;
+    char* masterIp;
     float* submat;
     size_t id;
+    int client_sock;
 } socketInfo;
 
 void find_ip(char ips[][16], char ports[][6], char* port, size_t userT, char* ip, size_t* i){
@@ -89,179 +92,156 @@ void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPor
     }
 }
 
-void slave(char* ip, char* port, size_t submatSize){
-    int socket_desc, client_sock, client_size;
-    struct sockaddr_in server_addr, client_addr;
+void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
+    int socket_desc;
+    struct sockaddr_in server_addr;
     float *submat = (float *)malloc(submatSize * sizeof(float));
 
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     
     if(socket_desc < 0){
-        printf("Error while creating socket\n");
+        printf("Error creating socket\n");
         return;
     }
-    printf("Socket created successfully\n");
-    // Source - https://stackoverflow.com/a/24194999
-	if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
-		printf("setsockopt(SO_REUSEADDR) failed");
-		return;
-	}
-	    
-    
+
     // Initialize the server address by the port and IP:
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(port));
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    
-    // Bind the socket descriptor to the server address (the port and IP):
-    if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr))<0){
-        printf("Couldn't bind to the port\n");
-        return;
-    }
-    printf("Done with binding\n");
-
-    // Turn on the socket to listen for incoming connections:
-    if(listen(socket_desc, 1) < 0){
-        printf("Error while listening\n");
-        return;
-    }
-    printf("\nListening for incoming connections.....\n");
-    
-    /* Store the client’s address and socket descriptor by accepting an
-    incoming connection. The server-side code stops and waits at accept()
-    until a client calls connect().
-    */
-    client_size = sizeof(client_addr);
-    client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, (socklen_t*)&client_size);
-    
-    if (client_sock < 0){
-        printf("Can't accept\n");
-        return;
-    }
-    printf("Client connected at IP: %s and port: %i\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
-    // Receive client's message:
-    if (recv(client_sock, submat, submatSize*sizeof(float), 0) < 0){
-        printf("Couldn't receive\n");
-        return;
-    } else {
-        printf("Received Matrix: \n");
-        for (int i=0; i<submatSize; i++){
-            printf("%f", submat[i]);
-            if (i == 3) {
-                printf("\n");
-            } else {
-                printf(" ");
-            }
-        }
-    }
-
-    if(send(client_sock, "ack", 4 * sizeof(char), 0) < 0){
-        printf("Unable to send message\n");
-        return;
-    }
-
-    close(client_sock);
-    close(socket_desc);
-}
-
-void* send_to_slave(void* arg){
-    socketInfo* sock = (socketInfo*) arg;
-    
-    int socket_desc;
-    struct sockaddr_in server_addr;
-    char ack[4];
-
-    // Create socket:
-    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-    
-    if(socket_desc < 0){
-        printf("Unable to create socket\n");
-        return NULL;
-    }
-    printf("Socket created successfully\n");
-    
-    // Set port and IP the same as server-side:
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(sock->port));
-    server_addr.sin_addr.s_addr = inet_addr(sock->ip);
+    server_addr.sin_port = htons(atoi(masterPort));
+    server_addr.sin_addr.s_addr = inet_addr(masterIp);
     
     bool connected = false;
     int retries = 0;
-    while (connected == false){
-        if (retries == 10){
-            return NULL;
+    while(!connected){
+        if(retries == 10){
+            printf("Could not connect\n");
+            return;
         }
         if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-            perror("connect");
+            perror("connect"); 
             sleep(1);
             retries++;
-            continue;
         } else {
             connected = true;
         }
     }
 
-    printf("Connected with server successfully\n");
+    printf("Connected to master at %s: %s\n", masterIp, masterPort);
+    send(socket_desc, userPort, 6, 0);
+
+    if(recv(socket_desc, submat, submatSize * sizeof(float), 0) < 0){
+        printf("Couldn't receive\n");
+        return; 
+    }
+    printf("Received submatrix.\n");
+
+    if(send(socket_desc, "ack", 4, 0) < 0){
+        printf("Unable to send ack\n");
+        return;
+    }
+
+    close(socket_desc);
+    free(submat);
+}
+
+void* send_to_slave(void* arg){
+    socketInfo* sock = (socketInfo*) arg;
+    char ack[4];
 
     size_t submatSize;
-    submatSize = sock->id==0 ? sock->n * (sock->n/sock->t)+(sock->n % sock->t) : sock->n * (sock->n/sock->t);
+    submatSize = sock->id==0 
+        ? sock->n * (sock->n/sock->t)+(sock->n % sock->t) 
+        : sock->n * (sock->n/sock->t);
 
-    // Send the message to server:
-    if(send(socket_desc, sock->submat, submatSize * sizeof(float), 0) < 0){
-        printf("Unable to send message\n");
+    if(send(sock->client_sock, sock->submat, submatSize * sizeof(float), 0) < 0){
+        printf("Unable to send to slave %zu\n", sock->id);
         return NULL;
-    } else {
-        printf("Sent Matrix: \n");
-            for (int j=0; j<submatSize; j++){
-                printf("%f", sock->submat[j]);
-                if (j%sock->n == 0) {
-                    printf("\n");
-                } else {
-                    printf(" ");
-                }
-            }
     }
+    printf("Sent submatrix to slave %zu\n", sock->id);
 
-    // Receive the server's response:
-    if(recv(socket_desc, ack, 4*sizeof(char), 0) < 0){
-        printf("Error while receiving server's msg\n");
+    if(recv(sock->client_sock, ack, 4, 0) < 0){
+        printf("Error receiving ack from slave %zu\n", sock->id);
         return NULL;
     }
 
-    if (strcmp(ack, "ack") == 0){
-        printf("Slave %d acknowledged\n", sock->id);
-    }
+    if(strcmp(ack, "ack") == 0) printf("Slave %zu acknowledged\n", sock->id);
 
-    // Close the socket:
-    close(socket_desc);
+    close(sock->client_sock);
     return NULL;
 }
 
-void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, size_t userN){
+void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, size_t userN, char* masterPort, char* masterIp){
+    int socket_desc;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_size;
+
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+    if(socket_desc < 0){
+        printf("Error creating socket\n"); return; 
+    }
+
+    setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(atoi(masterPort));
+    server_addr.sin_addr.s_addr = inet_addr(masterIp);
+
+    if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+        printf("Couldn't bind\n"); 
+        return;
+    }
+
+    if(listen(socket_desc, userT) < 0){
+        printf("Error listening\n");
+        return;
+    }
+
+    printf("Master listening on %s: %s\n", masterIp, masterPort);
+    
     socketInfo* splits = (socketInfo*)malloc(sizeof (socketInfo) * userT);
     pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t) * userT);
     
     for (size_t i=0; i<userT; i++){
-        splits[i].n = userN;
-        splits[i].t = userT;
-        splits[i].submat = submatrices[i];
-        splits[i].ip = ips[i];
-        splits[i].port = ports[i];
-        splits[i].id = i;
-    }
+        client_size = sizeof(client_addr);
+        int client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
+        if(client_sock < 0){
+            printf("Can't accept\n"); 
+            return; 
+        }
+        printf("Slave connected: %s: %d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-    for (size_t i = 0; i < userT; i++) {
-        pthread_create(&tid[i], NULL, send_to_slave, &splits[i]);
+        char slavePort[6];
+        recv(client_sock, slavePort, 6, 0);
+
+        size_t idx = 0;
+        for(size_t j=0; j < userT; j++){
+            if(strcmp(inet_ntoa(client_addr.sin_addr), ips[j]) == 0){
+                idx = j;
+                break;
+            }
+        }
+        
+        splits[idx].n = userN;
+        splits[idx].t = userT;
+        splits[idx].submat = submatrices[idx];
+        splits[idx].ip = ips[idx];
+        splits[idx].port = ports[idx];
+        splits[idx].masterIp = masterIp;
+        splits[idx].masterPort = masterPort;
+        splits[idx].id = idx;
+        splits[idx].client_sock = client_sock;
+
+        pthread_create(&tid[idx], NULL, send_to_slave, &splits[idx]);
     }
 
     for (size_t i = 0; i < userT; i++) {
         pthread_join(tid[i], NULL);
     }
     
+    close(socket_desc);
     free(splits);
     free(tid);
 }
+
 
 // main function
 int main(){
@@ -306,7 +286,7 @@ int main(){
             
             // measure execution time
             clock_gettime(CLOCK_MONOTONIC, &time_before);
-            master(ips, ports, submatrices, userT, userN);
+            master(ips, ports, submatrices, userT, userN, masterIP, masterPort);
             clock_gettime(CLOCK_MONOTONIC, &time_after);
             double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
                                 (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
@@ -333,7 +313,7 @@ int main(){
         printf("i: %ld\n", i);
         
         clock_gettime(CLOCK_MONOTONIC, &time_before);
-        slave(ip, userPort, submatSize);
+        slave(userPort, masterIP, masterPort, submatSize);
         clock_gettime(CLOCK_MONOTONIC, &time_after);
         double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
                             (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
