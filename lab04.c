@@ -136,7 +136,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
         printf("Couldn't receive\n");
         return; 
     }
-    printf("Received submatrix.\n");
+    printf("Received submatrix (%d bytes).\n", submatSize * sizeof(float));
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
@@ -164,7 +164,7 @@ void* send_to_slave(void* arg){
         printf("Unable to send to slave %zu\n", sock->id);
         return NULL;
     }
-    printf("Sent submatrix to slave %zu\n", sock->id);
+    printf("Sent submatrix to slave %zu (%d bytes sent)\n", sock->id, submatSize * sizeof(float));
 
     if(recv(sock->client_sock, ack, 4, 0) < 0){
         printf("Error receiving ack from slave %zu\n", sock->id);
@@ -299,7 +299,7 @@ int main(){
     char masterPort[6];
 
     read_config(ips, ports, &userT, masterPort, masterIP);
-	printf("DEBUG masterIP: '%s', masterPort: '%s'\n", masterIP, masterPort);
+	// printf("DEBUG masterIP: '%s', masterPort: '%s'\n", masterIP, masterPort);
 
     if (status == 0){
         float *mat = generate_matrix(userN);
@@ -314,8 +314,6 @@ int main(){
             }
 
             free(submatrices);
-
-            
         } 
     } else if (status == 1) {
         char ip[16];
@@ -324,10 +322,10 @@ int main(){
         size_t submatSize;
         submatSize = i==0 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
         
-        printf("submat size: %ld\n", submatSize);
-        printf("userN: %ld\n", userN);
-        printf("userT: %ld\n", userT);
-        printf("i: %ld\n", i);
+        // printf("submat size: %ld\n", submatSize);
+        // printf("userN: %ld\n", userN);
+        // printf("userT: %ld\n", userT);
+        // printf("i: %ld\n", i);
         
         slave(userPort, masterIP, masterPort, submatSize);
     }
