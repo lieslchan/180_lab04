@@ -93,6 +93,8 @@ void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPor
 }
 
 void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
+    struct timespec time_before, time_after;
+    
     int socket_desc;
     struct sockaddr_in server_addr;
     float *submat = (float *)malloc(submatSize * sizeof(float));
@@ -126,6 +128,8 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
     }
 
     printf("Connected to master at %s: %s\n", masterIp, masterPort);
+    // measure execution time
+    clock_gettime(CLOCK_MONOTONIC, &time_before);
     send(socket_desc, userPort, 6, 0);
 
     if(recv(socket_desc, submat, submatSize * sizeof(float), 0) < 0){
@@ -138,7 +142,11 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
         printf("Unable to send ack\n");
         return;
     }
-
+	clock_gettime(CLOCK_MONOTONIC, &time_after);
+	double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
+		            (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
+	    
+	printf("Execution time: %f\n", time_elapsed);
     close(socket_desc);
     free(submat);
 }
@@ -170,6 +178,8 @@ void* send_to_slave(void* arg){
 }
 
 void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, size_t userN, char* masterPort, char* masterIp){
+    struct timespec time_before, time_after;
+    
     int socket_desc;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_size;
@@ -184,22 +194,27 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(masterPort));
     server_addr.sin_addr.s_addr = inet_addr(masterIp);
+    
+    printf("MasterIP: %s\n", masterIp);
 
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
         printf("Couldn't bind\n"); 
         return;
     }
-
+	
+	
     if(listen(socket_desc, userT) < 0){
         printf("Error listening\n");
         return;
     }
+    
 
     printf("Master listening on %s: %s\n", masterIp, masterPort);
     
     socketInfo* splits = (socketInfo*)malloc(sizeof (socketInfo) * userT);
     pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t) * userT);
     
+    clock_gettime(CLOCK_MONOTONIC, &time_before);
     for (size_t i=0; i<userT; i++){
         client_size = sizeof(client_addr);
         int client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
@@ -208,10 +223,12 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
             return; 
         }
         printf("Slave connected: %s: %d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
+	
+	
         char slavePort[6];
         recv(client_sock, slavePort, 6, 0);
-
+        
+	
         size_t idx = 0;
         for(size_t j=0; j < userT; j++){
             if(strcmp(inet_ntoa(client_addr.sin_addr), ips[j]) == 0){
@@ -236,7 +253,11 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
     for (size_t i = 0; i < userT; i++) {
         pthread_join(tid[i], NULL);
     }
+    clock_gettime(CLOCK_MONOTONIC, &time_after);
+            double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
+                                (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
     
+    printf("Execution time: %f\n", time_elapsed);
     close(socket_desc);
     free(splits);
     free(tid);
@@ -245,7 +266,7 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
 
 // main function
 int main(){
-    struct timespec time_before, time_after;
+
     size_t userN;
     int status;
     //size_t userT;
@@ -278,18 +299,14 @@ int main(){
     char masterPort[6];
 
     read_config(ips, ports, &userT, masterPort, masterIP);
+	printf("DEBUG masterIP: '%s', masterPort: '%s'\n", masterIP, masterPort);
 
     if (status == 0){
         float *mat = generate_matrix(userN);
         if (mat != NULL) {
             float** submatrices = split_matrix(userN, userT, mat);
             
-            // measure execution time
-            clock_gettime(CLOCK_MONOTONIC, &time_before);
-            master(ips, ports, submatrices, userT, userN, masterIP, masterPort);
-            clock_gettime(CLOCK_MONOTONIC, &time_after);
-            double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
-                                (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
+            master(ips, ports, submatrices, userT, userN, masterPort, masterIP);
                 
             free(mat);
             for (int i=0; i<userT; i++){
@@ -298,7 +315,7 @@ int main(){
 
             free(submatrices);
 
-            printf("Execution time: %f\n", time_elapsed);
+            
         } 
     } else if (status == 1) {
         char ip[16];
@@ -312,13 +329,7 @@ int main(){
         printf("userT: %ld\n", userT);
         printf("i: %ld\n", i);
         
-        clock_gettime(CLOCK_MONOTONIC, &time_before);
         slave(userPort, masterIP, masterPort, submatSize);
-        clock_gettime(CLOCK_MONOTONIC, &time_after);
-        double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
-                            (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
-            
-        printf("Execution time: %f\n", time_elapsed);
     }
 }
 
