@@ -80,10 +80,10 @@ void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPor
         fscanf(fptr, "%ld", userT);
         printf("t = %ld\n", *userT);
 
-        for (int i=0; i < *userT; i++){
+      for (int i=0; i < *userT; i++){
             fscanf(fptr, "%s %s", ips[i], ports[i]);
-            printf("IP %d: %s\n", i, ips[i]);
-            printf("PORT %d: %s\n", i, ports[i]);
+      //      printf("IP %d: %s\n", i, ips[i]);
+      //      printf("PORT %d: %s\n", i, ports[i]);
         }
 
         fclose(fptr);
@@ -136,7 +136,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
         printf("Couldn't receive\n");
         return; 
     }
-    printf("Received submatrix (%d bytes).\n", submatSize * sizeof(float));
+    printf("Received submatrix (%ld bytes).\n", submatSize * sizeof(float));
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
@@ -164,7 +164,7 @@ void* send_to_slave(void* arg){
         printf("Unable to send to slave %zu\n", sock->id);
         return NULL;
     }
-    printf("Sent submatrix to slave %zu (%d bytes sent)\n", sock->id, submatSize * sizeof(float));
+    printf("Sent submatrix to slave %zu (%ld bytes sent)\n", sock->id, submatSize * sizeof(float));
 
     if(recv(sock->client_sock, ack, 4, 0) < 0){
         printf("Error receiving ack from slave %zu\n", sock->id);
@@ -231,7 +231,7 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
 	
         size_t idx = 0;
         for(size_t j=0; j < userT; j++){
-            if(strcmp(inet_ntoa(client_addr.sin_addr), ips[j]) == 0){
+            if(strcmp(slavePort, ports[j]) == 0){
                 idx = j;
                 break;
             }
