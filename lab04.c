@@ -14,6 +14,8 @@
 typedef struct socketInfo {
     size_t n;
     size_t t; 
+    size_t startCol;
+    size_t cols;
     char* port;
     char* ip;
     char* masterPort;
@@ -98,6 +100,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
     int socket_desc;
     struct sockaddr_in server_addr;
     float *submat = (float *)malloc(submatSize * sizeof(float));
+    size_t length; 
 
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     
@@ -136,7 +139,21 @@ void slave(char* userPort, char* masterIp, char* masterPort, size_t submatSize){
         printf("Couldn't receive\n");
         return; 
     }
+
+    if(recv(socket_desc, length, sizeof(size_t), 0) < 0){
+        printf("Couldn't receive\n");
+        return; 
+    }
+
+    char* colRange[length];
+
+    if(recv(socket_desc, colRange, length, 0) < 0){
+        printf("Couldn't receive\n");
+        return; 
+    }
+    
     printf("Received submatrix (%ld bytes).\n", submatSize * sizeof(float));
+    printf("Received columns: %s\n", colRange);
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
@@ -160,10 +177,33 @@ void* send_to_slave(void* arg){
         ? sock->n * (sock->n/sock->t)+(sock->n % sock->t) 
         : sock->n * (sock->n/sock->t);
 
+    // send submat 
     if(send(sock->client_sock, sock->submat, submatSize * sizeof(float), 0) < 0){
         printf("Unable to send to slave %zu\n", sock->id);
         return NULL;
     }
+
+    int needed = snprintf(NULL, 0, "%ld - %ld",
+                      sock->startCol,
+                      sock->startCol + sock->cols);
+
+    char *colRange = malloc(needed + 1); // +1 for null terminator
+
+    snprintf(colRange, needed + 1, "%ld - %ld",
+            sock->startCol,
+            sock->startCol + sock->cols);
+    
+    // send colRange
+    size_t len = sizeof(colRange) + 1
+    if(send(sock->client_sock, &len, sizeof(len), 0) < 0){
+        printf("Unable to send to slave %zu\n", sock->id);
+        return NULL;
+    }
+    if(send(sock->client_sock, colRange, len, 0) < 0){
+        printf("Unable to send to slave %zu\n", sock->id);
+        return NULL;
+    }
+
     printf("Sent submatrix to slave %zu (%ld bytes sent)\n", sock->id, submatSize * sizeof(float));
 
     if(recv(sock->client_sock, ack, 4, 0) < 0){
@@ -215,6 +255,8 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
     pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t) * userT);
     
     clock_gettime(CLOCK_MONOTONIC, &time_before);
+    size_t colCount  = userN / userT;
+    size_t startCol = 0;
     for (size_t i=0; i<userT; i++){
         client_size = sizeof(client_addr);
         int client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
@@ -244,6 +286,8 @@ void master(char ips[][16], char ports[][6], float** submatrices, size_t userT, 
         splits[idx].port = ports[idx];
         splits[idx].masterIp = masterIp;
         splits[idx].masterPort = masterPort;
+        splits[i].cols = colCount + (i == 0 ? remainder : 0);   // add remainder to first split only 
+        startCol += splits[i].cols;
         splits[idx].id = idx;
         splits[idx].client_sock = client_sock;
 
