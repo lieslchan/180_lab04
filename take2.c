@@ -275,30 +275,52 @@ float* generate_matrix(size_t n){
     return mat;
 }
 
-int main(){
-    size_t userN;
-    int status;
-    char userPort[6]; // max of 5 + 1 for null terminator
+int main(int argc, char *argv[]){
+    if (argc != 4){
+        printf("Usage: %s <userN> <userPort> <status>\n", argv[0]);
+        return 1;
+    }
+
+    size_t userN = (size_t) atoi(argv[1]);
+    int status = atoi(argv[3]);
+
+    if (userN <= 0){
+        printf("Error: userN must be > 0\n");
+        return 1;
+    }
+
+    if (status != 0 && status != 1){
+        printf("Error: status must be 0 (master) or 1 (slave)\n");
+        return 1;
+    }
+
+    char userPort[6]; // max 5 digits + null terminator
+    strncpy(userPort, argv[2], sizeof(userPort) - 1);
+    userPort[5] = '\0'; // ensure null termination
+    
+    // size_t userN = atoi(argv[1]);
+    // userPort = argv[2];
+
 
     // get user n 
-    printf("Enter value of n for nxn matrix: \n");
-    scanf("%ld", &userN);
-    if (userN <= 0) return 0;
-    printf("\n");
+    // printf("Enter value of n for nxn matrix: \n");
+    // scanf("%ld", &userN);
+    // if (userN <= 0) return 0;
+    // printf("\n");
 
-    // get user port 
-    // TODO: input validation!!!
-    printf("Enter port number: \n");
-    scanf("%s", userPort);
-    printf("\n");
+    // // get user port 
+    // // TODO: input validation!!!
+    // printf("Enter port number: \n");
+    // scanf("%s", userPort);
+    // printf("\n");
 
-    // get instance status
-    printf("Enter status: \n");
-    scanf("%d", &status);
-    if (status != 0 && status != 1){
-        return 0;
-    }
-    printf("\n");
+    // // get instance status
+    // printf("Enter status: \n");
+    // scanf("%d", &status);
+    // if (status != 0 && status != 1){
+    //     return 0;
+    // }
+    // printf("\n");
 
     // max of 16 ip addresses; 15 chars max for ip address + 1 for null terminator
     char ips[16][16]; 
