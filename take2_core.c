@@ -18,15 +18,16 @@ typedef struct minimat {
     size_t rows;     // how many rows this thread handles
     float* matrix;   // pointer to orig matrix
     int client_sock;
-    int core;
+	int core;
 } submat;
 
 void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPort, char* masterIP);
 void* send_to_slave(void* arg);
-void slave(char* userPort, char* masterIp, char* masterPort, char ports[][6], size_t userN, size_t userT);
+void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], char ports[][6], size_t userN, size_t userT);
 void master(char ips[][16], char ports[][6], float* mat, size_t userT, size_t userN, char* masterPort, char* masterIp);
 void createThreads(size_t n, size_t t, float* X, int socket_desc);
 float* generate_matrix(size_t n);
+
 
 // READS CONFIG CORRECTLY
 void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPort, char* masterIP){
@@ -56,7 +57,7 @@ void* send_to_slave(void* arg){
     submat* mat = (submat*) arg;
     char ack[4];
 
-    cpu_set_t cpuset;
+	cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(mat->core, &cpuset);
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
@@ -106,7 +107,7 @@ void* send_to_slave(void* arg){
 
 }
 
-void slave(char* userPort, char* masterIp, char* masterPort, char ports[][6], size_t userN, size_t userT){
+void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], char ports[][6], size_t userN, size_t userT){
     int idx = 0;
     for (idx = idx; idx<userT; idx++){
         if(strcmp(userPort, ports[idx]) == 0){
@@ -117,7 +118,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ports[][6], si
     size_t submatSize = idx==0 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
     
     int socket_desc;
-    struct sockaddr_in server_addr;
+    struct sockaddr_in server_addr, self_addr;
     float *submat = (float *)malloc(submatSize * sizeof(float));
     size_t start_idx;
     struct timespec time_before, time_after;
@@ -133,6 +134,11 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ports[][6], si
     server_addr.sin_port = htons(atoi(masterPort));
     server_addr.sin_addr.s_addr  = inet_addr(masterIp);
 
+	self_addr.sin_family = AF_INET;
+	self_addr.sin_port = htons(atoi(userPort));
+	self_addr.sin_addr.s_addr = inet_addr(ips[idx]);
+	bind(socket_desc, (struct sockaddr*)&self_addr, sizeof(self_addr));
+	
     bool connected = false;
     int retries = 0;
     while (!connected) {
@@ -231,7 +237,7 @@ void createThreads(size_t n, size_t t, float* X, int socket_desc){
     size_t rowCount = n/t;
     size_t remainder = n%t;
     struct timespec time_before, time_after;
-    int num_cores = sysconf(_SC_NPROCESSORS_ONLN) - 1;   // dynamic number of cores depending on machine
+	int num_cores = sysconf(_SC_NPROCESSORS_ONLN) - 1;
 
     // array of submatrices
     submat* splits = (submat*)malloc(sizeof(submat) * t);
@@ -255,7 +261,7 @@ void createThreads(size_t n, size_t t, float* X, int socket_desc){
         splits[i].rows = rowCount + (i == 0 ? remainder : 0);
         start_idx += splits[i].rows*n;
         splits[i].client_sock = client_sock;
-        splits[i].core = i % num_cores;     // round robin core assignment
+		splits[i].core = i % num_cores;
 
         pthread_create(&tid[i], NULL, send_to_slave, &splits[i]);
     }
@@ -357,6 +363,6 @@ int main(int argc, char *argv[]){
             master(ips, ports, mat, userT, userN, masterPort, masterIP);
         }
     } else if (status == 1){
-        slave(userPort, masterIP, masterPort, ports, userN, userT);
+        slave(userPort, masterIP, masterPort, ips, ports, userN, userT);
     }
 }
