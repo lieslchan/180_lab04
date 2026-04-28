@@ -56,7 +56,12 @@ void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPor
 void* send_to_slave(void* arg){
     submat* mat = (submat*) arg;
     char ack[4];
-	
+
+	cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(mat->core, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+
     size_t n = mat->n;
     size_t original_start = mat->start_idx;
     size_t start_idx = mat->start_idx;
@@ -71,11 +76,6 @@ void* send_to_slave(void* arg){
     for (start_idx = start_idx; start_idx < idx_limit; start_idx++){
         submat[idx++] = X[start_idx];
     }
-
-	cpu_set_t cpuset;
-	CPU_ZERO(&cpuset);
-	CPU_SET(idx % sysconf(_SC_NPROCESSORS_ONLN), &cpuset);
-	sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);  
 
     // send extracted submatrix
     size_t target = rows*n*sizeof(float);
