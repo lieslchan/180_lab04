@@ -100,7 +100,7 @@ void* send_to_slave(void* arg){
 
 }
 
-void slave(char* userPort, char* masterIp, char* masterPort, char ports[][6], size_t userN, size_t userT){
+void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], char ports[][6], size_t userN, size_t userT){
     int idx = 0;
     for (idx = idx; idx<userT; idx++){
         if(strcmp(userPort, ports[idx]) == 0){
