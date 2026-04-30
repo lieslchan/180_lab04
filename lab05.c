@@ -236,7 +236,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         pthread_exit(NULL);
     }
 
-    printf("MINS: ")
+    printf("MINS: ");
     for (int i=0; i<userN; i++){
         printf("%d ", mins[i]);
     }
@@ -248,7 +248,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         pthread_exit(NULL);
     }
 
-    printf("MAXS: ")
+    printf("MAXS: ");
     for (int i=0; i<userN; i++){
         printf("%d ", mins[i]);
     }
