@@ -185,12 +185,12 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     printf("Expected bytes: %ld, Received: %ld — %s\n", expected, total, total == expected ? "OK" : "MISMATCH");
     printf("Starting index: %ld\n\n", start_idx);
 
-    printf("My Matrix:\n");
-    for (size_t i = 0; i < info[0] * info[1]; i++){
-        printf("%f", submat[i]);
-        if ((i+1) % info[0] == 0) printf("\n");
-        else printf(" ");
-    }
+    // printf("My Matrix:\n");
+    // for (size_t i = 0; i < info[0] * info[1]; i++){
+    //     printf("%f", submat[i]);
+    //     if ((i+1) % info[0] == 0) printf("\n");
+    //     else printf(" ");
+    // }
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
