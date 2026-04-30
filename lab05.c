@@ -108,12 +108,6 @@ void* send_to_slave(void* arg){
         total += s;
     }
 
-    // send starting index
-    // if(send(mat->client_sock, &original_start, sizeof(size_t), 0) < 0){
-    //     printf("Unable to send starting index to slave\n");
-    //     pthread_exit(NULL);
-    // }
-
     // send mins array
     if(send(mat->client_sock, mins, n * sizeof(float), 0) < 0){
         printf("Unable to send minimums to slave\n");
@@ -125,15 +119,6 @@ void* send_to_slave(void* arg){
         printf("Unable to send maximums to slave\n");
         pthread_exit(NULL);
     }
-
-    // receive ack
-    // TODO: CHANGE TO RECEIVE TRANSFORMED MATRIX
-    // if(recv(mat->client_sock, ack, 4 * sizeof(char), 0) < 0){
-    //     printf("Couldn't receive\n");
-    //     pthread_exit(NULL);
-    // } else {
-    //     printf("Received ack.\n\n");
-    // }
 
     // receive transformed submatrix, store in previously malloc-ed submat array
     total = 0;
@@ -220,6 +205,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         printf("Unable to recv info\n");
         pthread_exit(NULL);
     }
+
     size_t target = info[0] * info[1] * sizeof(float);
     float *submat = (float *)malloc(submatSize * sizeof(float));
     
@@ -246,44 +232,26 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         pthread_exit(NULL);
     }
 
-    printf("MINS: ");
-    for (int i=0; i<userN; i++){
-        printf("%f ", mins[i]);
-    }
-    printf("\n");
-
     // receive maxs
     if(recv(socket_desc, maxs, userN * sizeof(float), 0) < 0){
         printf("Unable to recv maximums\n");
         pthread_exit(NULL);
     }
-
-    printf("MAXS: ");
-    for (int i=0; i<userN; i++){
-        printf("%f ", maxs[i]);
-    }
-    printf("\n");
-
     
     // check if matrix was received properly 
-    printf("Received submatrix (%ld bytes).\n", sizeof(submat) / sizeof(float));
+    printf("Received submatrix (%ld bytes).\n", sizeof(float) * info[0] * info[1]);
     // printf("Starting index: %ld\n\n", start_idx);
     size_t dimes = idx==0 ? (userN/userT)+(userN % userT) : (userN/userT);
 
-    printf("My Matrix: \n");
-        for (int i=0; i<userN*dimes; i++){
-            printf("%f", submat[i]);
-            if ((i+1) % userN == 0) {
-                printf("\n");
-            } else {
-                printf(" ");
-            }
-        }
-
-    // if(send(socket_desc, "ack", 4, 0) < 0){
-    //     printf("Unable to send ack\n");
-    //     return;
-    // }
+    // printf("My Matrix: \n");
+    //     for (int i=0; i<userN*dimes; i++){
+    //         printf("%f", submat[i]);
+    //         if ((i+1) % userN == 0) {
+    //             printf("\n");
+    //         } else {
+    //             printf(" ");
+    //         }
+    //     }
 
     // transform matrix
     mmt(submat, mins, maxs, info[1], info[0]);

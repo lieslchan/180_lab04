@@ -60,14 +60,23 @@ void* send_to_slave(void* arg){
     size_t start_idx = mat->start_idx;
     size_t rows = mat->rows;
     float* X = mat->matrix;  // points to full matrix
+    size_t info[2] = {n, rows};
 
     size_t idx_limit = rows*n + start_idx;
 
     float *submat = (float *)malloc(n*rows*sizeof(float));
+    
 
+    // generate new matrix for sending from pointer 
     size_t idx = 0;
     for (start_idx = start_idx; start_idx < idx_limit; start_idx++){
         submat[idx++] = X[start_idx];
+    }
+
+    // send n, and number of rows
+    if(send(mat->client_sock, info, 2 * sizeof(size_t), 0) < 0){
+        printf("Unable to send info to slave\n");
+        pthread_exit(NULL);
     }
 
     // send extracted submatrix
@@ -88,6 +97,7 @@ void* send_to_slave(void* arg){
         pthread_exit(NULL);
     }
 
+    // receive ack
     if(recv(mat->client_sock, ack, 4 * sizeof(char), 0) < 0){
         printf("Couldn't receive\n");
         pthread_exit(NULL);
@@ -112,7 +122,8 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     
     int socket_desc;
     struct sockaddr_in server_addr, self_addr;
-    float *submat = (float *)malloc(submatSize * sizeof(float));
+    
+    size_t info[2];
     size_t start_idx;
     struct timespec time_before, time_after;
 
@@ -148,10 +159,20 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     }
     
     printf("Connected to master at %s: %s\n", masterIp, masterPort);
-    
-    size_t target = submatSize * sizeof(float);
+
+
     size_t total = 0;
     clock_gettime(CLOCK_MONOTONIC, &time_before);
+
+    if(recv(socket_desc, info, 2 * sizeof(size_t), 0) < 0){
+        printf("Unable to recv info\n");
+        pthread_exit(NULL);
+    }
+
+    size_t target = info[0] * info[1] * sizeof(float);
+    float *submat = (float *)malloc(submatSize * sizeof(float));
+
+    total = 0;
     while (total < target) {
         ssize_t r = recv(socket_desc, (char*)submat + total, target - total, 0);
         if (r <= 0){
@@ -166,19 +187,19 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         pthread_exit(NULL);
     } 
 
-    printf("Received submatrix (%ld bytes).\n", submatSize * sizeof(float));
+    printf("Received submatrix (%ld bytes).\n", sizeof(float) * info[0] * info[1]);
     printf("Starting index: %ld\n\n", start_idx);
     size_t dimes = idx==0 ? (userN/userT)+(userN % userT) : (userN/userT);
 
-    // printf("My Matrix: \n");
-    //     for (int i=0; i<userN*dimes; i++){
-    //         printf("%f", submat[i]);
-    //         if ((i+1) % userN == 0) {
-    //             printf("\n");
-    //         } else {
-    //             printf(" ");
-    //         }
-    //     }
+    printf("My Matrix: \n");
+        for (int i=0; i<userN*dimes; i++){
+            printf("%f", submat[i]);
+            if ((i+1) % userN == 0) {
+                printf("\n");
+            } else {
+                printf(" ");
+            }
+        }
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
