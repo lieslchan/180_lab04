@@ -112,23 +112,17 @@ void* send_to_slave(void* arg){
 
 void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], char ports[][6], size_t userN, size_t userT){
     int idx = 0;
-    for (idx = idx; idx<userT; idx++){
-        if(strcmp(userPort, ports[idx]) == 0){
-            break;
-        }
+    for (idx = 0; idx < userT; idx++){
+        if(strcmp(userPort, ports[idx]) == 0) break;
     }
 
-    size_t submatSize = idx==0 ? userN * (userN/userT)+(userN % userT) : userN * (userN/userT);
-    
     int socket_desc;
     struct sockaddr_in server_addr, self_addr;
-    
     size_t info[2];
     size_t start_idx;
     struct timespec time_before, time_after;
 
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-
     if(socket_desc < 0){
         printf("Error creating socket\n");
         return;
@@ -136,81 +130,81 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(masterPort));
-    server_addr.sin_addr.s_addr  = inet_addr(masterIp);
+    server_addr.sin_addr.s_addr = inet_addr(masterIp);
 
-	self_addr.sin_family = AF_INET;
-	self_addr.sin_port = htons(atoi(userPort));
-	self_addr.sin_addr.s_addr = inet_addr(ips[idx]);
-	bind(socket_desc, (struct sockaddr*)&self_addr, sizeof(self_addr));
-	
+    self_addr.sin_family = AF_INET;
+    self_addr.sin_port = htons(atoi(userPort));
+    self_addr.sin_addr.s_addr = inet_addr(ips[idx]);
+    bind(socket_desc, (struct sockaddr*)&self_addr, sizeof(self_addr));
+
     bool connected = false;
     int retries = 0;
     while (!connected) {
         if(retries == 10){
             printf("Could not connect\n");
+            return;
         }
         if(connect(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-            perror("connect"); 
+            perror("connect");
             sleep(1);
             retries++;
         } else {
             connected = true;
         }
     }
-    
+
     printf("Connected to master at %s: %s\n", masterIp, masterPort);
 
-
-    size_t total = 0;
     clock_gettime(CLOCK_MONOTONIC, &time_before);
 
     if(recv(socket_desc, info, 2 * sizeof(size_t), 0) < 0){
         printf("Unable to recv info\n");
-        pthread_exit(NULL);
+        return;
     }
 
-    size_t target = info[0] * info[1] * sizeof(float);
-    float *submat = (float *)malloc(submatSize * sizeof(float));
+    size_t expected = info[0] * info[1] * sizeof(float);
+    float *submat = (float *)malloc(expected);
 
-    total = 0;
-    while (total < target) {
-        ssize_t r = recv(socket_desc, (char*)submat + total, target - total, 0);
+    size_t total = 0;
+    while (total < expected) {
+        ssize_t r = recv(socket_desc, (char*)submat + total, expected - total, 0);
         if (r <= 0){
             printf("Recv error\n");
+            free(submat);
             return;
         }
         total += r;
     }
 
     if(recv(socket_desc, &start_idx, sizeof(size_t), 0) < 0){
-        printf("Couldn't receive\n");
-        pthread_exit(NULL);
-    } 
+        printf("Couldn't receive starting index\n");
+        free(submat);
+        return;
+    }
 
-    printf("Received submatrix (%ld bytes).\n", sizeof(float) * info[0] * info[1]);
+    printf("Expected bytes: %ld, Received: %ld — %s\n", expected, total, total == expected ? "OK" : "MISMATCH");
     printf("Starting index: %ld\n\n", start_idx);
-    size_t dimes = idx==0 ? (userN/userT)+(userN % userT) : (userN/userT);
 
-    printf("My Matrix: \n");
-        for (int i=0; i<userN*dimes; i++){
-            printf("%f", submat[i]);
-            if ((i+1) % userN == 0) {
-                printf("\n");
-            } else {
-                printf(" ");
-            }
-        }
+    printf("My Matrix:\n");
+    for (size_t i = 0; i < info[0] * info[1]; i++){
+        printf("%f", submat[i]);
+        if ((i+1) % info[0] == 0) printf("\n");
+        else printf(" ");
+    }
 
     if(send(socket_desc, "ack", 4, 0) < 0){
         printf("Unable to send ack\n");
+        free(submat);
         return;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &time_after);
-            double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
-                                (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
-
+    double time_elapsed = (time_after.tv_sec - time_before.tv_sec) +
+                          (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
     printf("Execution time: %f\n", time_elapsed);
+
+    free(submat);
+    close(socket_desc);
 }
 
 void master(char ips[][16], char ports[][6], float* mat, size_t userT, size_t userN, char* masterPort, char* masterIp){
