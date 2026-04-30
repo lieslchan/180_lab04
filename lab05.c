@@ -236,11 +236,23 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         pthread_exit(NULL);
     }
 
+    printf("MINS: ")
+    for (int i=0; i<userN; i++){
+        printf("%d ", mins[i]);
+    }
+    printf("\n");
+
     // receive maxs
     if(recv(socket_desc, maxs, sizeof(maxs) * sizeof(float), 0) < 0){
         printf("Unable to recv maximums\n");
         pthread_exit(NULL);
     }
+
+    printf("MAXS: ")
+    for (int i=0; i<userN; i++){
+        printf("%d ", mins[i]);
+    }
+    printf("\n");
 
     // receive info
     if(recv(socket_desc, info, sizeof(info) * sizeof(float), 0) < 0){
@@ -253,15 +265,15 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     // printf("Starting index: %ld\n\n", start_idx);
     size_t dimes = idx==0 ? (userN/userT)+(userN % userT) : (userN/userT);
 
-    // printf("My Matrix: \n");
-    //     for (int i=0; i<userN*dimes; i++){
-    //         printf("%f", submat[i]);
-    //         if ((i+1) % userN == 0) {
-    //             printf("\n");
-    //         } else {
-    //             printf(" ");
-    //         }
-    //     }
+    printf("My Matrix: \n");
+        for (int i=0; i<userN*dimes; i++){
+            printf("%f", submat[i]);
+            if ((i+1) % userN == 0) {
+                printf("\n");
+            } else {
+                printf(" ");
+            }
+        }
 
     // if(send(socket_desc, "ack", 4, 0) < 0){
     //     printf("Unable to send ack\n");
