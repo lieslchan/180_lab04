@@ -352,6 +352,18 @@ void createThreads(size_t n, size_t t, float* X, int socket_desc){
         mins[c] = X[c];
         maxs[c] = X[c];
     }
+    
+    printf("INI MAXS: ");
+    for (int i=0; i<n; i++){
+        printf("%f ", maxs[i]);
+    }
+    printf("\n");
+
+    printf("INI MINS: ");
+    for (int i=0; i<n; i++){
+        printf("%f ", mins[i]);
+    }
+    printf("\n");
 
     // gather min/max per column
     size_t col = 0;
