@@ -108,17 +108,40 @@ void* send_to_slave(void* arg){
         total += s;
     }
 
-    // send mins array
-    if(send(mat->client_sock, mins, n * sizeof(float), 0) < 0){
-        printf("Unable to send minimums to slave\n");
-        pthread_exit(NULL);
-    }
+	target = n*sizeof(float);
+	total = 0;
+	while (total < target) {
+		ssize_t s = send(mat->client_sock, (char*)mins + total, target - total, 0);
+		if (s <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += s;
+	}
 
-    // send maxs array
-    if(send(mat->client_sock, maxs, n * sizeof(float), 0) < 0){
-        printf("Unable to send maximums to slave\n");
-        pthread_exit(NULL);
-    }
+	total = 0;
+	while (total < target) {
+		ssize_t s = send(mat->client_sock, (char*)maxs + total, target - total, 0);
+		if (s <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += s;
+	}
+
+	
+
+    // // send mins array
+    // if(send(mat->client_sock, mins, n * sizeof(float), 0) < 0){
+    //     printf("Unable to send minimums to slave\n");
+    //     pthread_exit(NULL);
+    // }
+
+    // // send maxs array
+    // if(send(mat->client_sock, maxs, n * sizeof(float), 0) < 0){
+    //     printf("Unable to send maximums to slave\n");
+    //     pthread_exit(NULL);
+    // }
 
     // receive transformed submatrix, store in previously malloc-ed submat array
     total = 0;
@@ -229,17 +252,40 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     //     pthread_exit(NULL);
     // } 
 
+	target = info[0] * sizeof(float);
+	total = 0;
+	while (total < target) {
+		ssize_t r = recv(socket_desc, (char*)mins + total, target - total, 0);
+		if (r <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += r;
+	}
+
+	total = 0;
+	while (total < target) {
+		ssize_t r = recv(socket_desc, (char*)maxs + total, target - total, 0);
+		if (r <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += r;
+	}
+
+	
+
     // receive mins
-    if(recv(socket_desc, mins, userN * sizeof(float), 0) < 0){
-        printf("Unable to recv minimums\n");
-        pthread_exit(NULL);
-    }
+    // if(recv(socket_desc, mins, userN * sizeof(float), 0) < 0){
+    //     printf("Unable to recv minimums\n");
+    //     pthread_exit(NULL);
+    // }
 
     // receive maxs
-    if(recv(socket_desc, maxs, userN * sizeof(float), 0) < 0){
-        printf("Unable to recv maximums\n");
-        pthread_exit(NULL);
-    }
+    // if(recv(socket_desc, maxs, userN * sizeof(float), 0) < 0){
+    //     printf("Unable to recv maximums\n");
+    //     pthread_exit(NULL);
+    // }
     
     // check if matrix was received properly 
     printf("Received submatrix (%ld bytes).\n", sizeof(float) * info[0] * info[1]);
