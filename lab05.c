@@ -22,6 +22,15 @@ typedef struct minimat {
     int client_sock;
 } submat;
 
+typedef struct {
+    float* submat;
+    float* mins;
+    float* maxs;
+    size_t rows;
+    size_t n;
+    int core_id;
+} thread_arg;
+
 // function signatures
 void read_config(char ips[][16], char ports[][6], size_t* userT, char* masterPort, char* masterIP);
 void* send_to_slave(void* arg);
@@ -41,6 +50,19 @@ void mmt(float* mat, float* mins, float* maxs, size_t rows, size_t n) {
         mat[idx] = (mat[idx] - mins[col]) * maxs[col];
         col++;
     }
+}
+
+void* worker(void* arg) {
+    thread_arg* t = (thread_arg*) arg;
+
+    // pin to core
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(t->core_id, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+
+    mmt(t->submat, t->mins, t->maxs, t->rows, t->n);
+    pthread_exit(NULL);
 }
 
 // READS CONFIG CORRECTLY
@@ -300,7 +322,22 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
 
     // transform matrix
     clock_gettime(CLOCK_MONOTONIC, &time_before);
-    mmt(submat, mins, maxs, info[1], info[0]);
+    size_t chunk = info[1] / userT;  // rows per thread
+    pthread_t tids[userT];
+    thread_arg args[userT];
+
+    for (int i = 0; i < userT; i++) {
+        args[i].submat = submat + i * chunk * info[0];
+        args[i].mins   = mins;
+        args[i].maxs   = maxs;
+        args[i].rows   = chunk;
+        args[i].n      = info[0];
+        args[i].core_id = i;
+        pthread_create(&tids[i], NULL, worker, &args[i]);
+    }
+    for (int i = 0; i < userT; i++)
+        pthread_join(tids[i], NULL);
+        
     clock_gettime(CLOCK_MONOTONIC, &time_after);
             double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
                                 (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
