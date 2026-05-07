@@ -81,14 +81,6 @@ void* send_to_slave(void* arg){
     size_t info[2] = {n, rows};
 
     size_t idx_limit = rows*n + start_idx;
-
-    float *submat = (float *)malloc(n*rows*sizeof(float));
-    
-    // generate new matrix for sending from pointer 
-    size_t idx = 0;
-    for (start_idx = start_idx; start_idx < idx_limit; start_idx++){
-        submat[idx++] = X[start_idx];
-    }
     
     // send n, and number of rows
     if(send(mat->client_sock, info, 2 * sizeof(size_t), 0) < 0){
@@ -100,7 +92,7 @@ void* send_to_slave(void* arg){
     size_t target = rows*n*sizeof(float);
     size_t total = 0;
     while (total < target) {
-        ssize_t s = send(mat->client_sock, (char*)submat + total, target - total, 0);
+        ssize_t s = send(mat->client_sock, (char*)(X + original_start) + total, target - total, 0);
         if (s <= 0){
             printf("Send error\n");
             pthread_exit(NULL);
@@ -108,20 +100,46 @@ void* send_to_slave(void* arg){
         total += s;
     }
 
-    // send mins array
-    if(send(mat->client_sock, mins, n * sizeof(float), 0) < 0){
-        printf("Unable to send minimums to slave\n");
-        pthread_exit(NULL);
-    }
+	target = n*sizeof(float);
+	total = 0;
+	while (total < target) {
+		ssize_t s = send(mat->client_sock, (char*)mins + total, target - total, 0);
+		if (s <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += s;
+	}
 
-    // send maxs array
-    if(send(mat->client_sock, maxs, n * sizeof(float), 0) < 0){
-        printf("Unable to send maximums to slave\n");
-        pthread_exit(NULL);
-    }
+	total = 0;
+	while (total < target) {
+		ssize_t s = send(mat->client_sock, (char*)maxs + total, target - total, 0);
+		if (s <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += s;
+	}
+
+	
+
+    // // send mins array
+    // if(send(mat->client_sock, mins, n * sizeof(float), 0) < 0){
+    //     printf("Unable to send minimums to slave\n");
+    //     pthread_exit(NULL);
+    // }
+
+    // // send maxs array
+    // if(send(mat->client_sock, maxs, n * sizeof(float), 0) < 0){
+    //     printf("Unable to send maximums to slave\n");
+    //     pthread_exit(NULL);
+    // }
 
     // receive transformed submatrix, store in previously malloc-ed submat array
+    float *submat = (float *)malloc(n*rows*sizeof(float));
+    
     total = 0;
+    target = rows * n * sizeof(float);
     while (total < target) {
         ssize_t s = recv(mat->client_sock, (char*)submat + total, target - total, 0);
         if (s <= 0){
@@ -132,7 +150,7 @@ void* send_to_slave(void* arg){
     }
 
     // update original matrix values with transformed values 
-    idx = 0;
+    size_t idx = 0;
     start_idx = original_start;
     for (start_idx = start_idx; start_idx < idx_limit; start_idx++){
         X[start_idx] = submat[idx++];
@@ -198,7 +216,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     printf("Connected to master at %s: %s\n", masterIp, masterPort);
     
     size_t total = 0;
-    clock_gettime(CLOCK_MONOTONIC, &time_before);
+    
     
     // receive info
     total = 0;
@@ -229,48 +247,82 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
     //     pthread_exit(NULL);
     // } 
 
+	target = info[0] * sizeof(float);
+	total = 0;
+	while (total < target) {
+		ssize_t r = recv(socket_desc, (char*)mins + total, target - total, 0);
+		if (r <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += r;
+	}
+
+	total = 0;
+	while (total < target) {
+		ssize_t r = recv(socket_desc, (char*)maxs + total, target - total, 0);
+		if (r <= 0){
+            printf("Send error\n");
+            pthread_exit(NULL);
+        }
+        total += r;
+	}
+
+	
+
     // receive mins
-    if(recv(socket_desc, mins, userN * sizeof(float), 0) < 0){
-        printf("Unable to recv minimums\n");
-        pthread_exit(NULL);
-    }
+    // if(recv(socket_desc, mins, userN * sizeof(float), 0) < 0){
+    //     printf("Unable to recv minimums\n");
+    //     pthread_exit(NULL);
+    // }
 
     // receive maxs
-    if(recv(socket_desc, maxs, userN * sizeof(float), 0) < 0){
-        printf("Unable to recv maximums\n");
-        pthread_exit(NULL);
-    }
+    // if(recv(socket_desc, maxs, userN * sizeof(float), 0) < 0){
+    //     printf("Unable to recv maximums\n");
+    //     pthread_exit(NULL);
+    // }
     
     // check if matrix was received properly 
     printf("Received submatrix (%ld bytes).\n", sizeof(float) * info[0] * info[1]);
     // printf("Starting index: %ld\n\n", start_idx);
     size_t dimes = idx==0 ? (userN/userT)+(userN % userT) : (userN/userT);
-
-    // printf("My Matrix: \n");
-    //     for (int i=0; i<userN*dimes; i++){
-    //         printf("%f", submat[i]);
-    //         if ((i+1) % userN == 0) {
-    //             printf("\n");
-    //         } else {
-    //             printf(" ");
-    //         }
-    //     }
+    /**
+     printf("My Matrix: \n");
+         for (int i=0; i<userN*dimes; i++){
+             printf("%f", submat[i]);
+             if ((i+1) % userN == 0) {
+                 printf("\n");
+             } else {
+                 printf(" ");
+             }
+         }
+    **/
 
     // transform matrix
+    clock_gettime(CLOCK_MONOTONIC, &time_before);
     mmt(submat, mins, maxs, info[1], info[0]);
+    clock_gettime(CLOCK_MONOTONIC, &time_after);
+            double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
+                                (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
+
+    printf("Execution time: %f\n", time_elapsed);
     
-    // printf("Transformed Matrix: \n");
-    //     for (int i=0; i<userN*dimes; i++){
-    //         printf("%f", submat[i]);
-    //         if ((i+1) % userN == 0) {
-    //             printf("\n");
-    //         } else {
-    //             printf(" ");
-    //         }
-    //     }
+    /**
+     printf("Transformed Matrix: \n");
+         for (int i=0; i<userN*dimes; i++){
+             printf("%f", submat[i]);
+             if ((i+1) % userN == 0) {
+                 printf("\n");
+             } else {
+                 printf(" ");
+             }
+         }
+    **/
+    
 
     // send transformed matrix
     total = 0;
+    target = info[0] * info[1] * sizeof(float);
     while (total < target) {
         ssize_t r = send(socket_desc, (char*)submat + total, target - total, 0);
         if (r <= 0){
@@ -280,11 +332,7 @@ void slave(char* userPort, char* masterIp, char* masterPort, char ips[][16], cha
         total += r;
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &time_after);
-            double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
-                                (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
-
-    printf("Execution time: %f\n", time_elapsed);
+    
 }
 
 void master(char ips[][16], char ports[][6], float* mat, size_t userT, size_t userN, char* masterPort, char* masterIp){
@@ -392,15 +440,19 @@ void createThreads(size_t n, size_t t, float* X, int socket_desc){
     for (size_t i = 0; i < t; i++) {
         pthread_join(tid[i], NULL);
     }
-    // printf("Transformed Matrix: \n");
-    //     for (int i=0; i<n*n; i++){
-    //         printf("%f", X[i]);
-    //         if ((i+1) % n == 0) {
-    //             printf("\n");
-    //         } else {
-    //             printf(" ");
-    //         }
-    //     }
+    
+    /**
+    printf("Transformed Matrix: \n");
+         for (int i=0; i<n*n; i++){
+             printf("%f", X[i]);
+             if ((i+1) % n == 0) {
+                 printf("\n");
+             } else {
+                 printf(" ");
+             }
+         }
+    **/
+    
 
     clock_gettime(CLOCK_MONOTONIC, &time_after);
             double time_elapsed = (time_after.tv_sec - time_before.tv_sec) + 
@@ -482,16 +534,18 @@ int main(int argc, char *argv[]){
     // master instance
     if (status == 0){
         float *mat = generate_matrix(userN);
-        // printf("Initial Matrix: \n");
-        // for (int i=0; i<userN*userN; i++){
-        //     printf("%f", mat[i]);
+         /**
+         printf("Initial Matrix: \n");
+         for (int i=0; i<userN*userN; i++){
+             printf("%f", mat[i]);
         
-        //     if ((i+1) % userN == 0) {
-        //         printf("\n");
-        //     } else {
-        //         printf(" ");
-        //     }
-        // }
+             if ((i+1) % userN == 0) {
+                 printf("\n");
+             } else {
+                 printf(" ");
+             }
+         }
+        **/
         if (mat != NULL){
             master(ips, ports, mat, userT, userN, masterPort, masterIP);
         }
