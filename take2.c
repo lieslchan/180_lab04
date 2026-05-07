@@ -350,7 +350,7 @@ int main(int argc, char *argv[]){
     char masterPort[6];
 
     read_config(ips, ports, &userT, masterPort, masterIP);
-	printf("DEBUG masterIP: '%s', masterPort: '%s'\n", masterIP, masterPort);
+	//printf("DEBUG masterIP: '%s', masterPort: '%s'\n", masterIP, masterPort);
     
     // master instance
     if (status == 0){
